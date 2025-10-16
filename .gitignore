@@ -1,0 +1,8 @@
+/.env
+/.conda
+/backup
+/DeepDanbooru*
+/deepdanbooru*
+*.h5
+*.pth
+*.onnx
