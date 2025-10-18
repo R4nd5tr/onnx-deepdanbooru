@@ -1,8 +1,28 @@
 import tensorflow as tf
 import os
 import io
-import torch
+import numpy as np
 
+def h5_to_tflite(h5_model_path, tflite_model_path, quantize="none"):
+    model = tf.keras.models.load_model(h5_model_path, compile=False)
+    print(f"Input shape: {model.input_shape}, Output shape: {model.output_shape}")
+    if quantize == "float16":
+        converter = tf.lite.TFLiteConverter.from_keras_model(model)
+        converter.optimizations = [tf.lite.Optimize.DEFAULT]
+        converter.target_spec.supported_types = [tf.float16]
+        tflite_model = converter.convert()
+    else:
+        converter = tf.lite.TFLiteConverter.from_keras_model(model)
+        tflite_model = converter.convert()
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    print(f"TFLite Input details: {input_details}")
+    print(f"TFLite Output details: {output_details}")
+    with open(tflite_model_path, "wb") as f:
+        f.write(tflite_model)
+    return tflite_model_path
 
 def get_tf_model_info(model_path, output_path=None):
     if output_path is None:
@@ -39,3 +59,28 @@ def get_tf_model_info(model_path, output_path=None):
 
     return output_path
 
+def test_h5_and_tflite_equivalence(h5_model_path, tflite_model_path):
+    model = tf.keras.models.load_model(h5_model_path, compile=False)
+    input_shape = model.input_shape
+    test_input = np.random.random((1, *input_shape[1:])).astype(np.float32)
+
+
+    h5_output = model.predict(test_input)
+
+    interpreter = tf.lite.Interpreter(model_path=tflite_model_path)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.set_tensor(input_details[0]['index'], test_input)
+    interpreter.invoke()
+    tflite_output = interpreter.get_tensor(output_details[0]['index'])
+
+    if tf.reduce_all(tf.abs(h5_output - tflite_output) < 1e-5):
+        print("Outputs are equivalent within tolerance.")
+    else:
+        print("Outputs differ!")
+
+if __name__ == "__main__":
+    test_h5_and_tflite_equivalence("deepdanbooru-v3-20211112-sgd-e28-model/model-resnet_custom_v3.h5", "model.tflite")

@@ -3,6 +3,11 @@
 /backup
 /DeepDanbooru*
 /deepdanbooru*
+/.vscode
+*/bin
+*/build
+*/external
 *.h5
 *.pth
 *.onnx
+*.tflite

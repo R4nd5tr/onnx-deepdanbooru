@@ -1,0 +1,24 @@
+{
+    "version": 4,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 20
+    },
+    "configurePresets": [
+        {
+            "name": "msvc",
+            "displayName": "MSVC",
+            "binaryDir": "${sourceDir}/cpp_deploy/build/msvc",
+            "cacheVariables": {
+                "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/cpp_deploy/bin/msvc"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "msvc-build",
+            "configurePreset": "msvc",
+            "jobs": 16
+        }
+    ]
+}
