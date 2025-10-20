@@ -7,7 +7,9 @@
 */bin
 */build
 */external
+*/model
 *.h5
 *.pth
 *.onnx
 *.tflite
+test*

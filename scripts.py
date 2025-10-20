@@ -2,6 +2,7 @@ import tensorflow as tf
 import os
 import io
 import numpy as np
+import json
 
 def h5_to_tflite(h5_model_path, tflite_model_path, quantize="none"):
     model = tf.keras.models.load_model(h5_model_path, compile=False)
@@ -82,5 +83,13 @@ def test_h5_and_tflite_equivalence(h5_model_path, tflite_model_path):
     else:
         print("Outputs differ!")
 
+def tags_txt_to_json(tags_txt_path, tags_json_path):
+    with open(tags_txt_path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+
+    with open(tags_json_path, "w", encoding="utf-8") as f:
+        json.dump(lines, f, ensure_ascii=False, indent=2)
+
 if __name__ == "__main__":
-    test_h5_and_tflite_equivalence("deepdanbooru-v3-20211112-sgd-e28-model/model-resnet_custom_v3.h5", "model.tflite")
+    # test_h5_and_tflite_equivalence("deepdanbooru-v3-20211112-sgd-e28-model/model-resnet_custom_v3.h5", "model.tflite")
+    tags_txt_to_json("deepdanbooru-v3-20211112-sgd-e28-model/tags.txt", "deepdanbooru-v3-20211112-sgd-e28-model/tags.json")

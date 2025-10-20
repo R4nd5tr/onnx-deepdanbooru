@@ -10,7 +10,8 @@
             "displayName": "MSVC",
             "binaryDir": "${sourceDir}/cpp_deploy/build/msvc",
             "cacheVariables": {
-                "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/cpp_deploy/bin/msvc"
+                "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/cpp_deploy/bin/msvc",
+                "BUILD_TEST_TARGET": "ON"
             }
         }
     ],
