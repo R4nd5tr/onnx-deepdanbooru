@@ -6,19 +6,39 @@
     },
     "configurePresets": [
         {
-            "name": "msvc",
-            "displayName": "MSVC",
+            "name": "msvc-debug",
+            "displayName": "MSVC Debug",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
             "binaryDir": "${sourceDir}/cpp_deploy/build/msvc",
             "cacheVariables": {
                 "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/cpp_deploy/bin/msvc",
                 "BUILD_TEST_TARGET": "ON"
             }
+        },
+        {
+            "name": "msvc-release",
+            "displayName": "MSVC Release",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
+            "binaryDir": "${sourceDir}/cpp_deploy/build/msvc",
+            "cacheVariables": {
+                "CMAKE_RUNTIME_OUTPUT_DIRECTORY": "${sourceDir}/cpp_deploy/bin/msvc",
+                "BUILD_TEST_TARGET": "OFF"
+            }
         }
     ],
     "buildPresets": [
         {
-            "name": "msvc-build",
-            "configurePreset": "msvc",
+            "name": "msvc-debug-build",
+            "configurePreset": "msvc-debug",
+            "configuration": "Debug",
+            "jobs": 16
+        },
+        {
+            "name": "msvc-release-build",
+            "configurePreset": "msvc-release",
+            "configuration": "Release",
             "jobs": 16
         }
     ]

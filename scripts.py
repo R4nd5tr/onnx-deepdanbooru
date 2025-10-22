@@ -3,6 +3,8 @@ import os
 import io
 import numpy as np
 import json
+import onnx
+from onnx import StringStringEntryProto
 
 def h5_to_tflite(h5_model_path, tflite_model_path, quantize="none"):
     model = tf.keras.models.load_model(h5_model_path, compile=False)
@@ -90,6 +92,46 @@ def tags_txt_to_json(tags_txt_path, tags_json_path):
     with open(tags_json_path, "w", encoding="utf-8") as f:
         json.dump(lines, f, ensure_ascii=False, indent=2)
 
+def add_metadata_to_onnx_model_file(onnx_model_path):
+    model = onnx.load(onnx_model_path)
+    metadata = {
+        # === 原始模型信用 ===
+        "original_model.name": "DeepDanbooru",
+        "original_model.author": "Kichang Kim",
+        "original_model.repository": "https://github.com/KichangKim/DeepDanbooru",
+        "original_model.link": "https://github.com/KichangKim/DeepDanbooru/releases/tag/v3-20211112-sgd-e28",
+        
+        # === MIT 许可证信息 ===
+        "license.type": "MIT",
+        "license.url": "https://opensource.org/licenses/MIT",
+        "license.terms": "This model is provided under MIT License. See original repository for full terms.",
+        "license.attribution_required": "true",
+        
+        # === 模型技术规格 ===
+        "model.type": "deep-learning",
+        "model.task": "image-tagging",
+        "model.domain": "computer-vision",
+        "model.framework": "TensorFlow",  # 原始框架
+        "model.input_shape": "1,512,512,3",
+        "model.input_format": "RGB NHWC",
+        "model.input_range": "0-1",
+        "model.output_type": "tags-probabilities",
+        "model.tags_count": "9176",  # 实际标签数量
+        "model.tags_date": "2021/11/12 22:30:46",
+        
+        # === 你的处理信息 ===
+        "name": "deepdanbooru-v3-20211112-sgd-e28-ONNX",
+        "processed.by": "R4nd5tr(GitHub: https://github.com/R4nd5tr)",
+        "processed.purpose": "Converted to ONNX format for deployment",
+    }
+    for key, value in metadata.items():        
+        entry = StringStringEntryProto(key=key, value=value)
+        model.metadata_props.append(entry)
+
+    onnx.save(model, onnx_model_path)
+
 if __name__ == "__main__":
     # test_h5_and_tflite_equivalence("deepdanbooru-v3-20211112-sgd-e28-model/model-resnet_custom_v3.h5", "model.tflite")
-    tags_txt_to_json("deepdanbooru-v3-20211112-sgd-e28-model/tags.txt", "deepdanbooru-v3-20211112-sgd-e28-model/tags.json")
+    # tags_txt_to_json("deepdanbooru-v3-20211112-sgd-e28-model/tags.txt", "deepdanbooru-v3-20211112-sgd-e28-model/tags.json")
+    add_metadata_to_onnx_model_file("cpp_deploy/model/model.onnx")
+    pass

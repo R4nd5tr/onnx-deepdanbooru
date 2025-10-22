@@ -8,25 +8,28 @@ project(autotagger
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_BUILD_TYPE Debug)
-
 set(ONNXRUNTIME_DIR ${PROJECT_SOURCE_DIR}/cpp_deploy/external/onnxruntime-win-x64-1.23.1)
 set(OPENCV_DIR ${PROJECT_SOURCE_DIR}/cpp_deploy/external/opencv/build)
+set(HEADER_LIB_DIR ${PROJECT_SOURCE_DIR}/cpp_deploy/external/include)
 
+set(OPENCV_DEBUG_LIB ${OPENCV_DIR}/x64/vc16/lib/opencv_world4120d.lib)
+set(OPENCV_RELEASE_LIB ${OPENCV_DIR}/x64/vc16/lib/opencv_world4120.lib)
 
 set(PROJECT_INCLUDE_DIRS ${PROJECT_SOURCE_DIR}/cpp_deploy/include)
-file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/cpp_deploy/src/*.cpp)
-set(ALL_INCLUDE_DIR ${PROJECT_INCLUDE_DIRS} ${ONNXRUNTIME_DIR}/include ${OPENCV_DIR}/include)
-set(ALL_LIB ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib ${OPENCV_DIR}/x64/vc16/lib/opencv_world4120d.lib)
+set(SRC_FILE_DIRS ${PROJECT_SOURCE_DIR}/cpp_deploy/src)
+set(ALL_INCLUDE_DIR ${PROJECT_INCLUDE_DIRS} ${ONNXRUNTIME_DIR}/include ${OPENCV_DIR}/include ${HEADER_LIB_DIR})
+set(ALL_LIB ${ONNXRUNTIME_DIR}/lib/onnxruntime.lib "$<$<CONFIG:Debug>:${OPENCV_DEBUG_LIB}>" "$<$<CONFIG:Release>:${OPENCV_RELEASE_LIB}>"
+)
 
-add_library(autotagger SHARED ${SRC_FILES})
-target_include_directories(autotagger PRIVATE ${ALL_INCLUDE_DIR})
-target_link_libraries(autotagger PRIVATE ${ALL_LIB})
+add_library(autotagger_defalt SHARED ${SRC_FILE_DIRS}/defalt.cpp)
+target_compile_definitions(autotagger_defalt PRIVATE AUTOTAGGER_EXPORTS)
+target_include_directories(autotagger_defalt PRIVATE ${ALL_INCLUDE_DIR})
+target_link_libraries(autotagger_defalt PRIVATE ${ALL_LIB})
 
 if(BUILD_TEST_TARGET STREQUAL "ON")
-    set(TEST_FILES ${PROJECT_SOURCE_DIR}/cpp_deploy/test.cpp) # include test files
+    set(TEST_FILES ${PROJECT_SOURCE_DIR}/cpp_deploy/test.cpp) # include test file
     add_executable(TEST_autotagger
-        ${SRC_FILES}
+        ${SRC_FILE_DIRS}
         ${TEST_FILES}
     )
     target_include_directories(TEST_autotagger PRIVATE ${ALL_INCLUDE_DIR})

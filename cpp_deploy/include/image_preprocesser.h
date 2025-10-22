@@ -3,7 +3,8 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-// linear interpolation resize + border replicate padding to 512x512, normalize to [0,1], RGB NHWC Row Major float array
+// linear interpolation resize + border replicate padding to 512x512,
+// normalize to [0,1], RGB NHWC Row Major (1, 512, 512, 3) float array
 std::vector<float> preprocessImage(const std::filesystem::path& imagePath) {
     cv::Mat image = cv::imread(imagePath.string(), cv::IMREAD_COLOR_RGB); // channel = 3
     if (image.empty()) {
@@ -19,9 +20,7 @@ std::vector<float> preprocessImage(const std::filesystem::path& imagePath) {
     double ty = (targetHeight - imageHeight * scale) / 2.0;
     cv::Mat affine = (cv::Mat_<double>(2, 3) << scale, 0, tx, 0, scale, ty);
     cv::Mat transformed;
-    cv::warpAffine(image, transformed, affine, cv::Size(targetWidth, targetHeight), cv::INTER_LINEAR, cv::BORDER_REPLICATE);
-    cv::imshow("Transformed Image", transformed);
-    cv::waitKey(0);
+    cv::warpAffine(image, transformed, affine, cv::Size(targetWidth, targetHeight), cv::INTER_AREA, cv::BORDER_REPLICATE);
 
     cv::Mat floatImage;
     transformed.convertTo(floatImage, CV_32FC3, 1.0 / 255.0);
