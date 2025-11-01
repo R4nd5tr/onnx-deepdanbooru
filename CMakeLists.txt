@@ -29,9 +29,10 @@ target_link_libraries(autotagger_defalt PRIVATE ${ALL_LIB})
 if(BUILD_TEST_TARGET STREQUAL "ON")
     set(TEST_FILES ${PROJECT_SOURCE_DIR}/cpp_deploy/test.cpp) # include test file
     add_executable(TEST_autotagger
-        ${SRC_FILE_DIRS}
-        ${TEST_FILES}
+    ${SRC_FILE_DIRS}
+    ${TEST_FILES}
     )
+    target_compile_definitions(TEST_autotagger PRIVATE STATIC_TEST_BUILD)
     target_include_directories(TEST_autotagger PRIVATE ${ALL_INCLUDE_DIR})
     target_link_libraries(TEST_autotagger PRIVATE ${ALL_LIB})
 endif()

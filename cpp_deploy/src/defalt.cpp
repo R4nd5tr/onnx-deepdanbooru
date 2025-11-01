@@ -1,20 +1,25 @@
 #include "../include/autotagger_api.h"
 #include "../include/image_preprocesser.h"
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <json.hpp>
 #include <onnxruntime_cxx_api.h>
+#include <thread>
 
 using json = nlohmann::json;
 
-class DefaltAutoTagger : public AutoTagger {
+class DefaltAutoTagger : public AutoTagger { // TODO: use multi-threaded preprocessing
 public:
-    DefaltAutoTagger(const std::filesystem::path& modelPath);
+    DefaltAutoTagger(const std::filesystem::path& modelPath = "./model/defalt.onnx");
     ~DefaltAutoTagger() override;
 
     std::vector<std::pair<std::string, bool>> getTagSet() override;
     std::string getModelName() override;
     ImageTagResult analyzeImage(const std::filesystem::path& imagePath) override;
+
+    bool gpuAvailable() override { return gpuIsAvailable; }
+    std::string getLog() override { return logStream.str(); }
 
 private:
     std::vector<float> predict(const std::vector<float>& inputTensorVec);
@@ -24,6 +29,8 @@ private:
     Ort::Env ortEnv;
     Ort::SessionOptions sessionOptions;
     Ort::Session* ortSession = nullptr;
+    std::ostringstream logStream;
+    bool gpuIsAvailable = false;
 
     // Model parameters
     std::string inputName = "input_1";
@@ -39,8 +46,18 @@ private:
 };
 DefaltAutoTagger::DefaltAutoTagger(const std::filesystem::path& modelPath)
     : ortEnv(ORT_LOGGING_LEVEL_WARNING, "DefaltAutoTagger"), sessionOptions(), modelPath(modelPath) {
-    sessionOptions.SetIntraOpNumThreads(1);
+    sessionOptions.SetIntraOpNumThreads(std::thread::hardware_concurrency());
     sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+    try {
+        OrtCUDAProviderOptions cuda_options;
+        cuda_options.device_id = 0; // 0表示GPU id
+        sessionOptions.AppendExecutionProvider_CUDA(cuda_options);
+        sessionOptions.SetIntraOpNumThreads(1);
+        gpuIsAvailable = true;
+        logStream << "ONNXRuntime: CUDA Execution Provider registered." << std::endl;
+    } catch (const Ort::Exception& e) {
+        logStream << "ONNXRuntime: CUDA not available, fallback to CPU. Reason: " << e.what() << std::endl;
+    }
     ortSession = new Ort::Session(ortEnv, modelPath.wstring().c_str(), sessionOptions);
 }
 DefaltAutoTagger::~DefaltAutoTagger() {
@@ -140,7 +157,8 @@ DefaltAutoTagger::getTagIndexesAndRestrictType(const std::vector<float>& outputT
     return {tagIndexes, restrictType};
 }
 ImageTagResult DefaltAutoTagger::analyzeImage(const std::filesystem::path& imagePath) {
-    std::vector<float> outputTensor = predict(preprocessImage(imagePath));
+    std::vector<float> inputTensor = preprocessImage(imagePath);
+    std::vector<float> outputTensor = predict(inputTensor);
     auto [tagIndexes, restrictType] = getTagIndexesAndRestrictType(outputTensor);
     ImageTagResult result;
     result.tagIndexes = tagIndexes;
@@ -149,3 +167,13 @@ ImageTagResult DefaltAutoTagger::analyzeImage(const std::filesystem::path& image
 
     return result;
 }
+#ifndef STATIC_TEST_BUILD
+extern "C" {
+AUTOTAGGER_API AutoTagger* createAutoTagger() {
+    return new DefaltAutoTagger();
+}
+AUTOTAGGER_API void destroyAutoTagger(AutoTagger* ptr) {
+    delete ptr;
+}
+}
+#endif

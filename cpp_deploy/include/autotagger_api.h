@@ -28,11 +28,12 @@ public:
     virtual std::vector<std::pair<std::string, bool>> getTagSet() = 0; // pair<tag, is_character_tag> tags are in index order
     virtual std::string getModelName() = 0;
     virtual ImageTagResult analyzeImage(const std::filesystem::path& imagePath) = 0;
+
+    virtual bool gpuAvailable() = 0;
+    virtual std::string getLog() = 0;
 };
 
 extern "C" {
-AUTOTAGGER_API AutoTagger* createAutoTagger(const std::filesystem::path& modelPath = "/model/model.onnx");
+AUTOTAGGER_API AutoTagger* createAutoTagger();
 AUTOTAGGER_API void destroyAutoTagger(AutoTagger* ptr);
 }
-
-#undef AUTOTAGGER_API
