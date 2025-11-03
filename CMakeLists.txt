@@ -8,7 +8,7 @@ project(autotagger
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(ONNXRUNTIME_DIR ${PROJECT_SOURCE_DIR}/cpp_deploy/external/onnxruntime-win-x64-gpu-1.23.1)
+set(ONNXRUNTIME_DIR ${PROJECT_SOURCE_DIR}/cpp_deploy/external/onnxrt-dml)
 set(OPENCV_DIR ${PROJECT_SOURCE_DIR}/cpp_deploy/external/opencv/build)
 set(HEADER_LIB_DIR ${PROJECT_SOURCE_DIR}/cpp_deploy/external/include)
 

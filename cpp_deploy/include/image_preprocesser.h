@@ -3,10 +3,10 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
-// linear interpolation resize + border replicate padding to 512x512,
+// area interpolation resize + border replicate padding to 512x512,
 // normalize to [0,1], RGB NHWC Row Major (1, 512, 512, 3) float array
 std::vector<float> preprocessImage(const std::filesystem::path& imagePath) {
-    cv::Mat image = cv::imread(imagePath.string(), cv::IMREAD_COLOR_RGB); // channel = 3
+    cv::Mat image = cv::imread(imagePath.string(), cv::IMREAD_COLOR_RGB);
     if (image.empty()) {
         throw std::runtime_error("Failed to read image: " + imagePath.string());
     };

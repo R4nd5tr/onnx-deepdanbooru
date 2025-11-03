@@ -9,20 +9,28 @@
 
 using json = nlohmann::json;
 
-class DefaltAutoTagger : public AutoTagger { // TODO: use multi-threaded preprocessing
+class DefaltAutoTagger : public AutoTagger {
 public:
     DefaltAutoTagger(const std::filesystem::path& modelPath = "./model/defalt.onnx");
     ~DefaltAutoTagger() override;
 
-    std::vector<std::pair<std::string, bool>> getTagSet() override;
-    std::string getModelName() override;
     ImageTagResult analyzeImage(const std::filesystem::path& imagePath) override;
 
+    std::vector<float> preprocess(const std::filesystem::path& imagePath) override { return preprocessImage(imagePath); }
+    std::vector<float> predict(const std::vector<float>& inputTensorVec) override;
+    ImageTagResult postprocess(const std::vector<float>& outputTensorVec) override;
+
+    std::vector<std::pair<std::string, bool>> getTagSet() override;
+    std::string getModelName() override;
+
     bool gpuAvailable() override { return gpuIsAvailable; }
-    std::string getLog() override { return logStream.str(); }
+    std::string getLog() override {
+        std::string log = logStream.str();
+        logStream.str("");
+        return log;
+    }
 
 private:
-    std::vector<float> predict(const std::vector<float>& inputTensorVec);
     std::pair<std::vector<int>, ModelRestrictType> getTagIndexesAndRestrictType(const std::vector<float>& outputTensor);
     std::string modelName = "deepdanbooru-v3-20211112-sgd-e28-ONNX";
     std::filesystem::path modelPath;
@@ -46,19 +54,21 @@ private:
 };
 DefaltAutoTagger::DefaltAutoTagger(const std::filesystem::path& modelPath)
     : ortEnv(ORT_LOGGING_LEVEL_WARNING, "DefaltAutoTagger"), sessionOptions(), modelPath(modelPath) {
-    sessionOptions.SetIntraOpNumThreads(std::thread::hardware_concurrency());
     sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+    sessionOptions.SetIntraOpNumThreads(std::thread::hardware_concurrency());
     try {
-        OrtCUDAProviderOptions cuda_options;
-        cuda_options.device_id = 0; // 0表示GPU id
-        sessionOptions.AppendExecutionProvider_CUDA(cuda_options);
+        sessionOptions.AppendExecutionProvider("DML");
         sessionOptions.SetIntraOpNumThreads(1);
         gpuIsAvailable = true;
-        logStream << "ONNXRuntime: CUDA Execution Provider registered." << std::endl;
+        logStream << "ONNXRuntime: DML Execution Provider registered." << std::endl;
     } catch (const Ort::Exception& e) {
-        logStream << "ONNXRuntime: CUDA not available, fallback to CPU. Reason: " << e.what() << std::endl;
+        logStream << "ONNXRuntime: DML not available, fallback to CPU. Reason: " << e.what() << std::endl;
     }
-    ortSession = new Ort::Session(ortEnv, modelPath.wstring().c_str(), sessionOptions);
+    try {
+        ortSession = new Ort::Session(ortEnv, modelPath.wstring().c_str(), sessionOptions);
+    } catch (const Ort::Exception& e) {
+        logStream << "ONNXRuntime: Failed to create session. Reason: " << e.what() << std::endl;
+    }
 }
 DefaltAutoTagger::~DefaltAutoTagger() {
     delete ortSession;
@@ -156,15 +166,20 @@ DefaltAutoTagger::getTagIndexesAndRestrictType(const std::vector<float>& outputT
 
     return {tagIndexes, restrictType};
 }
-ImageTagResult DefaltAutoTagger::analyzeImage(const std::filesystem::path& imagePath) {
-    std::vector<float> inputTensor = preprocessImage(imagePath);
-    std::vector<float> outputTensor = predict(inputTensor);
-    auto [tagIndexes, restrictType] = getTagIndexesAndRestrictType(outputTensor);
+ImageTagResult DefaltAutoTagger::postprocess(const std::vector<float>& outputTensorVec) {
+    auto [tagIndexes, restrictType] = getTagIndexesAndRestrictType(outputTensorVec);
     ImageTagResult result;
     result.tagIndexes = tagIndexes;
     result.restrictType = restrictType;
-    result.featureVector = std::move(outputTensor);
-
+    for (const auto& val : tagIndexes) {
+        result.tagProbabilities.push_back(outputTensorVec[val]);
+    }
+    return result;
+}
+ImageTagResult DefaltAutoTagger::analyzeImage(const std::filesystem::path& imagePath) {
+    std::vector<float> inputTensor = preprocessImage(imagePath);
+    std::vector<float> outputTensor = predict(inputTensor);
+    ImageTagResult result = postprocess(outputTensor);
     return result;
 }
 #ifndef STATIC_TEST_BUILD

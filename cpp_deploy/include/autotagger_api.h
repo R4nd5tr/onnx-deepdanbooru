@@ -17,6 +17,7 @@ enum class ModelRestrictType { Unknown, General, Sensitive, Questionable, Explic
 
 struct ImageTagResult {
     std::vector<int> tagIndexes;
+    std::vector<float> tagProbabilities;
     ModelRestrictType restrictType;
     std::vector<float> featureVector;
 };
@@ -25,10 +26,20 @@ class AutoTagger {
 public:
     AutoTagger() = default;
     virtual ~AutoTagger() = default;
-    virtual std::vector<std::pair<std::string, bool>> getTagSet() = 0; // pair<tag, is_character_tag> tags are in index order
-    virtual std::string getModelName() = 0;
+
+    // image analysis function single thread synchronous call
     virtual ImageTagResult analyzeImage(const std::filesystem::path& imagePath) = 0;
 
+    // fine-grained processing functions for better control
+    virtual std::vector<float> preprocess(const std::filesystem::path& imagePath) = 0;
+    virtual std::vector<float> predict(const std::vector<float>& inputTensorVec) = 0; // do not call this concurrently
+    virtual ImageTagResult postprocess(const std::vector<float>& outputTensorVec) = 0;
+
+    // model info functions
+    virtual std::vector<std::pair<std::string, bool>> getTagSet() = 0; // pair<tag, is_character_tag> tags are in index order
+    virtual std::string getModelName() = 0;
+
+    // system info functions
     virtual bool gpuAvailable() = 0;
     virtual std::string getLog() = 0;
 };
