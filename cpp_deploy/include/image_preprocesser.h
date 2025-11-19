@@ -34,5 +34,5 @@ std::vector<float> preprocessImage(const std::filesystem::path& imagePath) {
     }
     std::vector<float> result(floatImage.ptr<float>(), floatImage.ptr<float>() + numElem);
 
-    return std::move(result);
+    return result;
 }

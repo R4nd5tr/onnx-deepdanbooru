@@ -4,6 +4,7 @@ import io
 import numpy as np
 import json
 import onnx
+from onnx import helper
 from onnx import StringStringEntryProto
 
 def h5_to_tflite(h5_model_path, tflite_model_path, quantize="none"):
@@ -130,8 +131,44 @@ def add_metadata_to_onnx_model_file(onnx_model_path):
 
     onnx.save(model, onnx_model_path)
 
+def add_feature_vec_output(onnx_model_path):
+    model = onnx.load(onnx_model_path)
+    graph = model.graph
+
+    # 找到最后的 ReLU 层输出
+    relu_output_name = None
+    for node in graph.node:
+        if node.op_type == "Relu":  # 找到最后一个 ReLU 层
+            relu_output_name = node.output[0]
+
+    if relu_output_name is None:
+        raise ValueError("No ReLU layer found in the model.")
+
+    # 添加全局平均池化层
+    pool_output_name = "feature_vec_output"
+    pool_node = helper.make_node(
+        "GlobalAveragePool",  # 使用全局平均池化
+        inputs=[relu_output_name],
+        outputs=[pool_output_name],
+        name="GlobalAveragePool"
+    )
+    graph.node.append(pool_node)
+
+    # 添加新的输出
+    new_output = helper.make_tensor_value_info(
+        pool_output_name,
+        onnx.TensorProto.FLOAT,
+        [None, 4096]  # 输出形状为 (None, 1, 1, 4096)，可以简化为 (None, 4096)
+    )
+    graph.output.append(new_output)
+
+    # 保存修改后的模型
+    onnx.save(model, onnx_model_path)
+    print(f"Feature vector output added.")
+
 if __name__ == "__main__":
     # test_h5_and_tflite_equivalence("deepdanbooru-v3-20211112-sgd-e28-model/model-resnet_custom_v3.h5", "model.tflite")
     # tags_txt_to_json("deepdanbooru-v3-20211112-sgd-e28-model/tags.txt", "deepdanbooru-v3-20211112-sgd-e28-model/tags.json")
-    add_metadata_to_onnx_model_file("cpp_deploy/model/model.onnx")
+    add_metadata_to_onnx_model_file("temp_model.onnx")
+    # add_feature_vec_output("temp_model.onnx")
     pass
