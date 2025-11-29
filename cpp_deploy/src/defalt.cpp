@@ -17,8 +17,8 @@ public:
     ImageTagResult analyzeImage(const std::filesystem::path& imagePath) override;
 
     std::vector<float> preprocess(const std::filesystem::path& imagePath) override { return preprocessImage(imagePath); }
-    PredictionResult predict(const std::vector<float>& inputTensorVec) override;
-    ImageTagResult postprocess(PredictionResult& predictResult) override;
+    PredictResult predict(const std::vector<float>& inputTensorVec) override;
+    ImageTagResult postprocess(PredictResult& predictResult) override;
 
     std::vector<std::pair<std::string, bool>> getTagSet() override;
     std::string getModelName() override;
@@ -32,6 +32,7 @@ public:
 
 private:
     std::pair<std::vector<int>, ModelRestrictType> getTagIndexesAndRestrictType(const std::vector<float>& outputTensor);
+    void loadModel();
     std::string modelName = "deepdanbooru-v3-20211112-sgd-e28-ONNX";
     std::filesystem::path modelPath;
     Ort::Env ortEnv;
@@ -44,9 +45,9 @@ private:
     std::string inputName = "input_1";
     std::vector<int64_t> inputShape = {1, 512, 512, 3};
     std::string outputName = "activation_172";
-    std::vector<int64_t> outputShape = {1, 9176};
+    std::vector<int64_t> tagOutputShape = {1, 9176};
     std::vector<int64_t> outputShapeFeatureVec = {1, 4096};
-    int tagCount = 9176;
+    int outputCount = 9176;
     int tagEndIndex = 9175;
     int generaltagStartIndex = 0;
     int characterTagStartIndex = 6891;
@@ -70,20 +71,23 @@ DefaltAutoTagger::DefaltAutoTagger(const std::filesystem::path& modelPath)
     } catch (const Ort::Exception& e) {
         logStream << "ONNXRuntime: DML not available, fallback to CPU. Reason: " << e.what() << std::endl;
     }
-    try {
-        ortSession = new Ort::Session(ortEnv, modelPath.wstring().c_str(), sessionOptions);
-    } catch (const Ort::Exception& e) {
-        logStream << "ONNXRuntime: Failed to create session. Reason: " << e.what() << std::endl;
-    }
 }
 DefaltAutoTagger::~DefaltAutoTagger() {
     delete ortSession;
+}
+void DefaltAutoTagger::loadModel() {
+    try {
+        ortSession = new Ort::Session(ortEnv, modelPath.wstring().c_str(), sessionOptions);
+    } catch (const Ort::Exception& e) {
+        std::cerr << "ONNXRuntime: Failed to create session. Reason: " << e.what() << std::endl;
+    }
 }
 std::string DefaltAutoTagger::getModelName() {
     return modelName;
 }
 std::vector<std::pair<std::string, bool>> DefaltAutoTagger::getTagSet() {
-    std::filesystem::path jsonPath = modelPath.replace_extension(".json");
+    std::filesystem::path jsonPath = modelPath;
+    jsonPath.replace_extension(".json");
     std::ifstream in(jsonPath);
     if (!in) throw std::runtime_error("Failed to open file");
     json j;
@@ -95,6 +99,7 @@ std::vector<std::pair<std::string, bool>> DefaltAutoTagger::getTagSet() {
     }
 
     std::vector<std::pair<std::string, bool>> result;
+    result.reserve(systemTagStartIndex);
     if (j.contains("tags") && j["tags"].is_array()) {
         for (size_t i = 0; i < systemTagStartIndex; ++i) {
             result.emplace_back(j["tags"][i].get<std::string>(), i >= characterTagStartIndex);
@@ -102,7 +107,13 @@ std::vector<std::pair<std::string, bool>> DefaltAutoTagger::getTagSet() {
     }
     return result;
 }
-PredictionResult DefaltAutoTagger::predict(const std::vector<float>& inputTensorVec) {
+PredictResult DefaltAutoTagger::predict(const std::vector<float>& inputTensorVec) {
+    if (ortSession == nullptr) {
+        loadModel();
+        if (ortSession == nullptr) {
+            throw std::runtime_error("ONNXRuntime: Session is not initialized.");
+        }
+    }
     Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault);
 
     // Create the input Ort::Value (rename to avoid shadowing the parameter)
@@ -121,16 +132,16 @@ PredictionResult DefaltAutoTagger::predict(const std::vector<float>& inputTensor
     float* tagProbData = outputTensors[0].GetTensorMutableData<float>();
     float* featureVecData = outputTensors[1].GetTensorMutableData<float>();
 
-    // compute output size from outputShape
+    // compute output size from tagOutputShape
     size_t tagProbOutSize = 1;
-    for (auto d : outputShape)
+    for (auto d : tagOutputShape)
         tagProbOutSize *= static_cast<size_t>(d);
 
     size_t featureVecOutSize = 1;
     for (auto d : outputShapeFeatureVec)
         featureVecOutSize *= static_cast<size_t>(d);
 
-    PredictionResult result;
+    PredictResult result;
     result.tagProbabilities = std::vector<float>(tagProbData, tagProbData + tagProbOutSize);
     result.featureVector = std::vector<float>(featureVecData, featureVecData + featureVecOutSize);
 
@@ -140,8 +151,9 @@ PredictionResult DefaltAutoTagger::predict(const std::vector<float>& inputTensor
 std::pair<std::vector<int>, ModelRestrictType>
 DefaltAutoTagger::getTagIndexesAndRestrictType(const std::vector<float>& outputTensor) {
     // get tag indexes above threshold
-    std::vector<int> tagIndexes(30); // pre-allocate with an estimated size
-    for (int i = 0; i < systemTagStartIndex; ++i) {
+    std::vector<int> tagIndexes;
+    tagIndexes.reserve(30);
+    for (int i = 0; i < systemTagStartIndex; i++) {
         if (outputTensor[i] >= tagThreshold) {
             tagIndexes.push_back(i);
         }
@@ -149,8 +161,8 @@ DefaltAutoTagger::getTagIndexesAndRestrictType(const std::vector<float>& outputT
     // last tags in tagSet are system tags, there are 3 system tags: rating:safe, rating:questionable, rating:explicit
     // find the max probability system tag for restrict type
     int maxIdx = systemTagStartIndex;
-    float maxProb = outputTensor[systemTagStartIndex];
-    for (int i = systemTagStartIndex + 1; i < tagCount; ++i) {
+    float maxProb = 0.0f;
+    for (int i = systemTagStartIndex; i < outputCount; i++) {
         if (outputTensor[i] > maxProb) {
             maxProb = outputTensor[i];
             maxIdx = i;
@@ -175,21 +187,21 @@ DefaltAutoTagger::getTagIndexesAndRestrictType(const std::vector<float>& outputT
 
     return {tagIndexes, restrictType};
 }
-ImageTagResult DefaltAutoTagger::postprocess(PredictionResult& predictResult) {
+ImageTagResult DefaltAutoTagger::postprocess(PredictResult& predictResult) {
     auto [tagIndexes, restrictType] = getTagIndexesAndRestrictType(predictResult.tagProbabilities);
     ImageTagResult result;
     result.tagIndexes = std::move(tagIndexes);
     result.restrictType = restrictType;
     result.tagProbabilities.reserve(tagIndexes.size());
     result.featureVector = std::move(predictResult.featureVector);
-    for (const auto& val : tagIndexes) {
+    for (const auto& val : result.tagIndexes) {
         result.tagProbabilities.push_back(predictResult.tagProbabilities[val]);
     }
     return result;
 }
 ImageTagResult DefaltAutoTagger::analyzeImage(const std::filesystem::path& imagePath) {
     std::vector<float> inputTensor = preprocessImage(imagePath);
-    PredictionResult predictionOutput = predict(inputTensor);
+    PredictResult predictionOutput = predict(inputTensor);
     ImageTagResult result = postprocess(predictionOutput);
     return result;
 }

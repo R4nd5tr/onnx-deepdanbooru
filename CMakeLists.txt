@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(autotagger 
-        VERSION 0.0.0
-        LANGUAGES CXX)
+project(autotagger LANGUAGES CXX)
 
 
 # setup configuration

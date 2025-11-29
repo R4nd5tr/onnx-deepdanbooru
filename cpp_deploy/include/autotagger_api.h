@@ -22,7 +22,7 @@ struct ImageTagResult {
     std::vector<float> featureVector;
 };
 
-struct PredictionResult {
+struct PredictResult {
     std::vector<float> tagProbabilities;
     std::vector<float> featureVector;
 };
@@ -37,8 +37,8 @@ public:
 
     // fine-grained processing functions for better control
     virtual std::vector<float> preprocess(const std::filesystem::path& imagePath) = 0;
-    virtual PredictionResult predict(const std::vector<float>& inputTensorVec) = 0; // do not call this concurrently
-    virtual ImageTagResult postprocess(PredictionResult& outputTensorVec) = 0;
+    virtual PredictResult predict(const std::vector<float>& inputTensorVec) = 0; // do not call this concurrently
+    virtual ImageTagResult postprocess(PredictResult& outputTensorVec) = 0;
 
     // model info functions
     virtual std::vector<std::pair<std::string, bool>> getTagSet() = 0; // pair<tag, is_character_tag> tags are in index order

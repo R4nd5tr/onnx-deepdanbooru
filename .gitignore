@@ -13,3 +13,4 @@
 *.onnx
 *.tflite
 test*
+translate*
