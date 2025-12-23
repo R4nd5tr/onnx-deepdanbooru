@@ -1,32 +1,15 @@
 import tensorflow as tf
 import os
 import io
-import numpy as np
 import json
 import onnx
 from onnx import helper
 from onnx import StringStringEntryProto
+import pickle
+import numpy as np
 
-def h5_to_tflite(h5_model_path, tflite_model_path, quantize="none"):
-    model = tf.keras.models.load_model(h5_model_path, compile=False)
-    print(f"Input shape: {model.input_shape}, Output shape: {model.output_shape}")
-    if quantize == "float16":
-        converter = tf.lite.TFLiteConverter.from_keras_model(model)
-        converter.optimizations = [tf.lite.Optimize.DEFAULT]
-        converter.target_spec.supported_types = [tf.float16]
-        tflite_model = converter.convert()
-    else:
-        converter = tf.lite.TFLiteConverter.from_keras_model(model)
-        tflite_model = converter.convert()
-    interpreter = tf.lite.Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-    print(f"TFLite Input details: {input_details}")
-    print(f"TFLite Output details: {output_details}")
-    with open(tflite_model_path, "wb") as f:
-        f.write(tflite_model)
-    return tflite_model_path
+import onnx_deepdanbooru
+import pca_itq
 
 def get_tf_model_info(model_path, output_path=None):
     if output_path is None:
@@ -63,29 +46,6 @@ def get_tf_model_info(model_path, output_path=None):
 
     return output_path
 
-def test_h5_and_tflite_equivalence(h5_model_path, tflite_model_path):
-    model = tf.keras.models.load_model(h5_model_path, compile=False)
-    input_shape = model.input_shape
-    test_input = np.random.random((1, *input_shape[1:])).astype(np.float32)
-
-
-    h5_output = model.predict(test_input)
-
-    interpreter = tf.lite.Interpreter(model_path=tflite_model_path)
-    interpreter.allocate_tensors()
-
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
-
-    interpreter.set_tensor(input_details[0]['index'], test_input)
-    interpreter.invoke()
-    tflite_output = interpreter.get_tensor(output_details[0]['index'])
-
-    if tf.reduce_all(tf.abs(h5_output - tflite_output) < 1e-5):
-        print("Outputs are equivalent within tolerance.")
-    else:
-        print("Outputs differ!")
-
 def tags_txt_to_json(tags_txt_path, tags_json_path):
     with open(tags_txt_path, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
@@ -106,7 +66,6 @@ def add_metadata_to_onnx_model_file(onnx_model_path):
         "license.type": "MIT",
         "license.url": "https://opensource.org/licenses/MIT",
         "license.terms": "This model is provided under MIT License. See original repository for full terms.",
-        "license.attribution_required": "true",
         
         # === 模型技术规格 ===
         "model.type": "deep-learning",
@@ -132,6 +91,7 @@ def add_metadata_to_onnx_model_file(onnx_model_path):
     onnx.save(model, onnx_model_path)
 
 def add_feature_vec_output(onnx_model_path):
+    """在 ONNX 模型中添加特征向量输出层。"""
     model = onnx.load(onnx_model_path)
     graph = model.graph
 
@@ -145,20 +105,39 @@ def add_feature_vec_output(onnx_model_path):
         raise ValueError("No ReLU layer found in the model.")
 
     # 添加全局平均池化层
-    pool_output_name = "feature_vec_output"
+    pool_output_name = "feature_vec_global_avg_pool"
     pool_node = helper.make_node(
         "GlobalAveragePool",  # 使用全局平均池化
         inputs=[relu_output_name],
         outputs=[pool_output_name],
-        name="GlobalAveragePool"
+        name="FeatureVectorGlobalAveragePool"
     )
     graph.node.append(pool_node)
 
+    # 添加 Squeeze 层以去掉多余的维度
+    squeeze_output_name = "feature_vec_output"
+    axes_tensor_name = "squeeze_axes"
+    axes_initializer = helper.make_tensor(
+        axes_tensor_name,
+        onnx.TensorProto.INT64,
+        [2],
+        np.array([2, 3], dtype=np.int64)
+    )
+    graph.initializer.append(axes_initializer)
+    
+    squeeze_node = helper.make_node(
+        "Squeeze",
+        inputs=[pool_output_name, axes_tensor_name],
+        outputs=[squeeze_output_name],
+        name="FeatureVectorSqueeze"
+    )
+    graph.node.append(squeeze_node)
+
     # 添加新的输出
     new_output = helper.make_tensor_value_info(
-        pool_output_name,
+        squeeze_output_name,
         onnx.TensorProto.FLOAT,
-        [None, 4096]  # 输出形状为 (None, 1, 1, 4096)，可以简化为 (None, 4096)
+        [None, 4096]
     )
     graph.output.append(new_output)
 
@@ -166,9 +145,60 @@ def add_feature_vec_output(onnx_model_path):
     onnx.save(model, onnx_model_path)
     print(f"Feature vector output added.")
 
+def collect_feature_vectors(image_dirs_json_file, model_path, json_path):
+    onnx_model = onnx_deepdanbooru.ONNXDeepDanbooruModel(model_path, json_path)
+    print("ONNX model loaded.")
+
+    with open(image_dirs_json_file, 'r', encoding='utf-8') as f:
+        image_dirs = json.load(f)
+    print(f"Image directories to process: {image_dirs}")
+
+    image_files = []
+    for dir_path in image_dirs:
+        for root, _, files in os.walk(dir_path):
+            for file in files:
+                if file.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                    image_files.append(os.path.join(root, file))
+    print(f"Found {len(image_files)} images.")
+
+    feature_vectors = []
+    for image_file in image_files:
+        try:
+            _, feature_vector = onnx_model.infer_image(image_file)
+            feature_vectors.append(feature_vector)
+        except Exception as e:
+            print(f"Error processing {image_file}: {e}")
+
+        print(f"Processed {len(feature_vectors)}/{len(image_files)} images.", end='\r')
+
+    with open('feature_vectors.pkl', 'wb') as f:
+        pickle.dump(np.vstack(feature_vectors), f)
+
+def train_pca_itq_model(feature_vectors_file):
+    with open(feature_vectors_file, 'rb') as f:
+        feature_vectors = pickle.load(f)
+    print(f"Loaded {feature_vectors.shape[0]} feature vectors of dimension {feature_vectors.shape[1]}.")
+
+    pca_itq_model = pca_itq.PCAITQHasher()
+    pca_itq_model.train(feature_vectors)
+    pca_itq_model.save()
+
+def add_pca_itq_hash_output(onnx_model_path, pca_itq_pkl_path):
+    """将 PCA-ITQ 哈希编码器添加为 ONNX 模型的输出层。需要先添加特征向量输出层。"""
+    onnx_model = onnx.load(onnx_model_path)
+    pca_itq_model = pca_itq.PCAITQHasher(file_path=pca_itq_pkl_path)
+    pca_itq_onnx_model = pca_itq_model.to_onnx()
+
+    # 合并两个 ONNX 模型
+    combined_model = onnx.compose.merge_models(onnx_model, pca_itq_onnx_model, io_map=[('feature_vec_output', 'input')])
+    onnx.save(combined_model, onnx_model_path)
+
 if __name__ == "__main__":
     # test_h5_and_tflite_equivalence("deepdanbooru-v3-20211112-sgd-e28-model/model-resnet_custom_v3.h5", "model.tflite")
     # tags_txt_to_json("deepdanbooru-v3-20211112-sgd-e28-model/tags.txt", "deepdanbooru-v3-20211112-sgd-e28-model/tags.json")
-    add_metadata_to_onnx_model_file("temp_model.onnx")
-    # add_feature_vec_output("temp_model.onnx")
+    # collect_feature_vectors("test_img_dirs.json", "./cpp_deploy/bin/msvc/Debug/model/defalt.onnx", "./cpp_deploy/bin/msvc/Debug/model/defalt.json")
+    # train_pca_itq_model("feature_vectors_stacked.pkl")
+    # add_metadata_to_onnx_model_file("converted.onnx")
+    # add_feature_vec_output("converted.onnx")
+    # add_pca_itq_hash_output("converted.onnx", "pca_itq_model.pkl")
     pass

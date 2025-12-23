@@ -4,12 +4,14 @@
 /DeepDanbooru*
 /deepdanbooru*
 /.vscode
+/__pycache__
 */bin
 */build
 */external
 */model
 *.h5
 *.pth
+*.pkl
 *.onnx
 *.tflite
 test*
