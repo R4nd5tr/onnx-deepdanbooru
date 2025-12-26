@@ -79,12 +79,3 @@ class ONNXDeepDanbooruModel:
         for tag, prob in tag_results:
             print(f"({prob:.6f}) {tag}")
         print("Feature Vector:", feature_vector)
-
-if __name__ == "__main__":
-    model_path = "converted.onnx"
-    json_path = "translated_defalt.json"
-    image_path = "test_image.jpg"  # Replace with your test image path
-
-    onnx_model = ONNXDeepDanbooruModel(model_path, json_path)
-    tag_probabilities, feature_vector = onnx_model.infer_image(image_path)
-    onnx_model.postprocess_results(tag_probabilities, feature_vector)

@@ -194,11 +194,4 @@ def add_pca_itq_hash_output(onnx_model_path, pca_itq_pkl_path):
     onnx.save(combined_model, onnx_model_path)
 
 if __name__ == "__main__":
-    # test_h5_and_tflite_equivalence("deepdanbooru-v3-20211112-sgd-e28-model/model-resnet_custom_v3.h5", "model.tflite")
-    # tags_txt_to_json("deepdanbooru-v3-20211112-sgd-e28-model/tags.txt", "deepdanbooru-v3-20211112-sgd-e28-model/tags.json")
-    # collect_feature_vectors("test_img_dirs.json", "./cpp_deploy/bin/msvc/Debug/model/defalt.onnx", "./cpp_deploy/bin/msvc/Debug/model/defalt.json")
-    # train_pca_itq_model("feature_vectors_stacked.pkl")
-    # add_metadata_to_onnx_model_file("converted.onnx")
-    # add_feature_vec_output("converted.onnx")
-    # add_pca_itq_hash_output("converted.onnx", "pca_itq_model.pkl")
     pass

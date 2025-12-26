@@ -9,6 +9,18 @@
 
 using json = nlohmann::json;
 
+std::vector<uint8_t> boolToBit(const std::vector<uint8_t>& boolVec) {
+    if (boolVec.empty()) return {};
+    size_t byteSize = (boolVec.size() + 7) / 8;
+    std::vector<uint8_t> byteVec(byteSize, 0);
+    for (size_t i = 0; i < boolVec.size(); ++i) {
+        if (boolVec[i]) {
+            byteVec[i / 8] |= (1 << (i % 8));
+        }
+    }
+    return byteVec;
+}
+
 class DefaltAutoTagger : public AutoTagger {
 public:
     DefaltAutoTagger(const std::filesystem::path& modelPath = "./model/defalt.onnx");
@@ -23,7 +35,7 @@ public:
     std::vector<std::pair<std::string, bool>> getTagSet() override;
     std::string getModelName() override;
 
-    bool gpuAvailable() override { return gpuIsAvailable; }
+    bool gpuAvailable() override { return isGpuAvailable; }
     std::string getLog() override {
         std::string log = logStream.str();
         logStream.str("");
@@ -32,21 +44,26 @@ public:
 
 private:
     std::pair<std::vector<int>, ModelRestrictType> getTagIndexesAndRestrictType(const std::vector<float>& outputTensor);
-    void loadModel();
-    std::string modelName = "deepdanbooru-v3-20211112-sgd-e28-ONNX";
+    bool loadModel();
     std::filesystem::path modelPath;
+
+    // ONNX Runtime
     Ort::Env ortEnv;
     Ort::SessionOptions sessionOptions;
     Ort::Session* ortSession = nullptr;
+
+    // logging and status
     std::ostringstream logStream;
-    bool gpuIsAvailable = false;
+    bool isGpuAvailable = false;
 
     // Model parameters
+    std::string modelName = "deepdanbooru-v3-20211112-sgd-e28-ONNX";
     std::string inputName = "input_1";
     std::vector<int64_t> inputShape = {1, 512, 512, 3};
-    std::string outputName = "activation_172";
-    std::vector<int64_t> tagOutputShape = {1, 9176};
-    std::vector<int64_t> outputShapeFeatureVec = {1, 4096};
+    std::string tagOutputName = "activation_172";
+    size_t tagOutputDim = 9176;
+    std::string hashOutputName = "hash_output";
+    size_t hashOutputDim = 512;
     int outputCount = 9176;
     int tagEndIndex = 9175;
     int generaltagStartIndex = 0;
@@ -63,10 +80,10 @@ DefaltAutoTagger::DefaltAutoTagger(const std::filesystem::path& modelPath)
         bool dmlPresent = std::find(providers.begin(), providers.end(), "DmlExecutionProvider") != providers.end();
         if (dmlPresent) {
             sessionOptions.AppendExecutionProvider("DML");
-            gpuIsAvailable = true;
+            isGpuAvailable = true;
             logStream << "ONNXRuntime: DML Execution Provider registered." << std::endl;
         } else {
-            logStream << "ONNXRuntime: DML not available in GetAvailableProviders(), will use CPU." << std::endl;
+            logStream << "ONNXRuntime: DML not available, will use CPU." << std::endl;
         }
     } catch (const Ort::Exception& e) {
         logStream << "ONNXRuntime: DML not available, fallback to CPU. Reason: " << e.what() << std::endl;
@@ -75,12 +92,14 @@ DefaltAutoTagger::DefaltAutoTagger(const std::filesystem::path& modelPath)
 DefaltAutoTagger::~DefaltAutoTagger() {
     delete ortSession;
 }
-void DefaltAutoTagger::loadModel() {
+bool DefaltAutoTagger::loadModel() {
     try {
         ortSession = new Ort::Session(ortEnv, modelPath.wstring().c_str(), sessionOptions);
     } catch (const Ort::Exception& e) {
-        std::cerr << "ONNXRuntime: Failed to create session. Reason: " << e.what() << std::endl;
+        logStream << "ONNXRuntime: Failed to create session. Reason: " << e.what() << std::endl;
+        return false;
     }
+    return true;
 }
 std::string DefaltAutoTagger::getModelName() {
     return modelName;
@@ -89,13 +108,19 @@ std::vector<std::pair<std::string, bool>> DefaltAutoTagger::getTagSet() {
     std::filesystem::path jsonPath = modelPath;
     jsonPath.replace_extension(".json");
     std::ifstream in(jsonPath);
-    if (!in) throw std::runtime_error("Failed to open file");
+    if (!in) {
+        logStream << "Failed to open tag set json file: " << jsonPath << std::endl;
+        return {};
+    };
     json j;
     in >> j;
 
     // validate model name in json to check if tag set matches model
     if (!j.contains("name") || !j["name"].is_string() || j["name"].get<std::string>() != modelName) {
-        throw std::runtime_error("Invalid model name in json");
+        logStream << "Tag set json model name does not match. Expected: " << modelName
+                  << ", Found: " << (j.contains("name") && j["name"].is_string() ? j["name"].get<std::string>() : "N/A")
+                  << std::endl;
+        return {};
     }
 
     std::vector<std::pair<std::string, bool>> result;
@@ -109,41 +134,29 @@ std::vector<std::pair<std::string, bool>> DefaltAutoTagger::getTagSet() {
 }
 PredictResult DefaltAutoTagger::predict(const std::vector<float>& inputTensorVec) {
     if (ortSession == nullptr) {
-        loadModel();
-        if (ortSession == nullptr) {
-            throw std::runtime_error("ONNXRuntime: Session is not initialized.");
+        if (!loadModel()) {
+            logStream << "ONNXRuntime: Model not loaded and failed to load." << std::endl;
+            return PredictResult{};
         }
     }
-    Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeDefault);
 
-    // Create the input Ort::Value (rename to avoid shadowing the parameter)
+    Ort::MemoryInfo memoryInfo =
+        Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault); // maybe not the best choice, but works
+
+    const char* inputNames[] = {inputName.c_str()};
+    const char* outputNames[] = {tagOutputName.c_str(), hashOutputName.c_str()};
+
     Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
         memoryInfo, const_cast<float*>(inputTensorVec.data()), inputTensorVec.size(), inputShape.data(), inputShape.size());
 
-    // Prepare names
-    const char* inputNames[] = {inputName.c_str()};
-    const char* outputNames[] = {outputName.c_str(), "feature_vec_output"};
-
-    // Run the model
     std::vector<Ort::Value> outputTensors =
         ortSession->Run(Ort::RunOptions{nullptr}, inputNames, &inputTensor, 1, outputNames, 2);
 
-    // Extract output data
-    float* tagProbData = outputTensors[0].GetTensorMutableData<float>();
-    float* featureVecData = outputTensors[1].GetTensorMutableData<float>();
-
-    // compute output size from tagOutputShape
-    size_t tagProbOutSize = 1;
-    for (auto d : tagOutputShape)
-        tagProbOutSize *= static_cast<size_t>(d);
-
-    size_t featureVecOutSize = 1;
-    for (auto d : outputShapeFeatureVec)
-        featureVecOutSize *= static_cast<size_t>(d);
-
     PredictResult result;
-    result.tagProbabilities = std::vector<float>(tagProbData, tagProbData + tagProbOutSize);
-    result.featureVector = std::vector<float>(featureVecData, featureVecData + featureVecOutSize);
+    float* tagProbData = outputTensors[0].GetTensorMutableData<float>();
+    uint8_t* featureHashData = outputTensors[1].GetTensorMutableData<uint8_t>();
+    result.tagProbabilities = std::vector<float>(tagProbData, tagProbData + tagOutputDim);
+    result.featureHash = std::vector<uint8_t>(featureHashData, featureHashData + hashOutputDim);
 
     return result;
 }
@@ -193,7 +206,7 @@ ImageTagResult DefaltAutoTagger::postprocess(PredictResult& predictResult) {
     result.tagIndexes = std::move(tagIndexes);
     result.restrictType = restrictType;
     result.tagProbabilities.reserve(tagIndexes.size());
-    result.featureVector = std::move(predictResult.featureVector);
+    result.featureHash = boolToBit(predictResult.featureHash);
     for (const auto& val : result.tagIndexes) {
         result.tagProbabilities.push_back(predictResult.tagProbabilities[val]);
     }

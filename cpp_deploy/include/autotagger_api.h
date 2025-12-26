@@ -19,12 +19,12 @@ struct ImageTagResult {
     std::vector<int> tagIndexes;
     std::vector<float> tagProbabilities;
     ModelRestrictType restrictType;
-    std::vector<float> featureVector;
+    std::vector<uint8_t> featureHash; // 512 bits
 };
 
 struct PredictResult {
     std::vector<float> tagProbabilities;
-    std::vector<float> featureVector;
+    std::vector<uint8_t> featureHash;
 };
 
 class AutoTagger {
