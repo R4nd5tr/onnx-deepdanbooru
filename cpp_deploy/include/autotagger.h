@@ -5,12 +5,12 @@
 
 #ifdef _WIN32
 #ifdef AUTOTAGGER_EXPORTS
-#define AUTOTAGGER_API __declspec(dllexport)
+#define AUTOTAGGER __declspec(dllexport)
 #else
-#define AUTOTAGGER_API __declspec(dllimport)
+#define AUTOTAGGER __declspec(dllimport)
 #endif
 #else
-#define AUTOTAGGER_API
+#define AUTOTAGGER
 #endif
 
 enum class ModelRestrictType { Unknown, General, Sensitive, Questionable, Explicit };
@@ -50,6 +50,6 @@ public:
 };
 
 extern "C" {
-AUTOTAGGER_API AutoTagger* createAutoTagger();
-AUTOTAGGER_API void destroyAutoTagger(AutoTagger* ptr);
+AUTOTAGGER AutoTagger* createAutoTagger();
+AUTOTAGGER void destroyAutoTagger(AutoTagger* ptr);
 }

@@ -1,4 +1,4 @@
-#include "../include/autotagger_api.h"
+#include "../include/autotagger.h"
 #include "../include/image_preprocesser.h"
 #include <chrono>
 #include <filesystem>
@@ -9,16 +9,16 @@
 
 using json = nlohmann::json;
 
-std::vector<uint8_t> boolToBit(const std::vector<uint8_t>& boolVec) {
+std::vector<uint8_t> boolVecToBits(const std::vector<uint8_t>& boolVec) {
     if (boolVec.empty()) return {};
     size_t byteSize = (boolVec.size() + 7) / 8;
-    std::vector<uint8_t> byteVec(byteSize, 0);
+    std::vector<uint8_t> bitVec(byteSize, 0);
     for (size_t i = 0; i < boolVec.size(); ++i) {
         if (boolVec[i]) {
-            byteVec[i / 8] |= (1 << (i % 8));
+            bitVec[i / 8] |= (1 << (i % 8));
         }
     }
-    return byteVec;
+    return bitVec;
 }
 
 class DefaltAutoTagger : public AutoTagger {
@@ -206,7 +206,7 @@ ImageTagResult DefaltAutoTagger::postprocess(PredictResult& predictResult) {
     result.tagIndexes = std::move(tagIndexes);
     result.restrictType = restrictType;
     result.tagProbabilities.reserve(tagIndexes.size());
-    result.featureHash = boolToBit(predictResult.featureHash);
+    result.featureHash = boolVecToBits(predictResult.featureHash);
     for (const auto& val : result.tagIndexes) {
         result.tagProbabilities.push_back(predictResult.tagProbabilities[val]);
     }
@@ -220,10 +220,10 @@ ImageTagResult DefaltAutoTagger::analyzeImage(const std::filesystem::path& image
 }
 #ifndef STATIC_TEST_BUILD
 extern "C" {
-AUTOTAGGER_API AutoTagger* createAutoTagger() {
+AUTOTAGGER AutoTagger* createAutoTagger() {
     return new DefaltAutoTagger();
 }
-AUTOTAGGER_API void destroyAutoTagger(AutoTagger* ptr) {
+AUTOTAGGER void destroyAutoTagger(AutoTagger* ptr) {
     delete ptr;
 }
 }

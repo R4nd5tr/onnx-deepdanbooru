@@ -1,7 +1,10 @@
 #pragma once
-#include "autotagger_api.h"
+#include "autotagger.h"
 #include <string>
 #include <windows.h>
+
+using CreateFunc = AutoTagger* (*)();
+using DestroyFunc = void (*)(AutoTagger*);
 
 class AutoTaggerLoader { // DLL 动态加载器，与 AutoTagger 实例使用共同的生命周期
 public:
@@ -57,8 +60,6 @@ public:
 private:
     AutoTagger* taggerInstance_ = nullptr;
     HMODULE hDll_ = nullptr;
-    using CreateFunc = AutoTagger* (*)();
-    using DestroyFunc = void (*)(AutoTagger*);
     CreateFunc createFunc_ = nullptr;
     DestroyFunc destroyFunc_ = nullptr;
 };
