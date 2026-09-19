@@ -2,7 +2,7 @@ import tensorflow as tf
 import onnx
 import tf2onnx
 
-# convert original DeepDanbooru model from TensorFlow to PyTorch
+# convert original DeepDanbooru model from TensorFlow to ONNX format
 
 # package version that works (does not align with requirements.txt):
 # tensorflow==2.17.0

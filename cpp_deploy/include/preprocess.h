@@ -3,6 +3,10 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
+// The preprocessing pipeline is based on DeepDanbooru's preprocessing logic,
+// ensuring consistency with the model's input.
+// https://github.com/KichangKim/DeepDanbooru
+
 constexpr int TARGET_HEIGHT = 512;
 constexpr int TARGET_WIDTH = 512;
 constexpr size_t TARGET_IMG_SIZE = TARGET_HEIGHT * TARGET_WIDTH * 3;
@@ -12,7 +16,7 @@ constexpr size_t TARGET_IMG_SIZE = TARGET_HEIGHT * TARGET_WIDTH * 3;
 std::vector<float> preprocessImage(const std::filesystem::path& imagePath) {
     cv::Mat image = cv::imread(imagePath.string(), cv::IMREAD_COLOR_RGB);
     if (image.empty()) {
-        throw std::runtime_error("Failed to read image: " + imagePath.string());
+        return {};
     };
 
     int imageWidth = image.cols;
