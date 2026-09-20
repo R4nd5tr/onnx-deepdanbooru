@@ -1,5 +1,7 @@
 # ONNX DeepDanbooru — 插件式图像自动标注模块
 
+Language: [中文](README.md) | [English](README-en.md)
+
 基于 ONNX Runtime 在 C++ 中部署 [DeepDanbooru](https://github.com/KichangKim/DeepDanbooru) 模型，用于我的 [Waifu Gallery](https://github.com/R4nd5tr/waifu_gallery) 插画管理应用项目，实现图像自动标签标注，图片查重和相似度搜索功能。
 
 ## 功能

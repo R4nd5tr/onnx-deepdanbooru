@@ -1,5 +1,7 @@
 # ONNX DeepDanbooru — Plugin-Based Automatic Image Tagging Module
 
+Language: [中文](README.md) | [English](README-en.md)
+
 Based on ONNX Runtime, deploys the [DeepDanbooru](https://github.com/KichangKim/DeepDanbooru) model in C++ for my [Waifu Gallery](https://github.com/R4nd5tr/waifu_gallery) illustration management application project, implementing automatic image tagging, image deduplication, and similarity search functionality.
 
 ## Features
