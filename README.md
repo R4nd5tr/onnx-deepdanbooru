@@ -47,8 +47,8 @@ flowchart TD
         F -->|"PCA-ITQ 特征哈希输出"| I
     end
 
-    A -->|"Load dynamic library at runtime<br/>createAutoTagger()"| C
-    C -->|"Model-specific inference logic implementation"| D
+    A -->|"运行时加载动态库<br/>createAutoTagger()"| C
+    C -->|"模型特定推理逻辑实现"| D
 ```
 
 ### 插件接口设计
